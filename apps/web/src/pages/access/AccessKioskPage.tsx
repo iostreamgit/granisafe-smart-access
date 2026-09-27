@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties, type Form
 import { createPortal } from 'react-dom';
 import * as cocoSsd from '@tensorflow-models/coco-ssd';
 import '@tensorflow/tfjs';
-import { FakeAiScenario } from '@granisafe/shared';
 import { ApiError, apiGet, apiSend } from '../../lib/api';
 import { useAuthStore } from '../../features/auth/auth-store';
 import type { IdentifyResponse, InspectResponse } from '../../features/access/types';
@@ -29,16 +28,9 @@ import styles from './AccessKioskPage.module.css';
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 const STABLE_FRAMES_NEEDED = 10;
 const DETECT_INTERVAL_MS = 120;
+const AUTO_RESULT_DISPLAY_MS = 3500;
+const COOLDOWN_RETRY_MS = 5500;
 const QR_READER_ID = 'gsa-qr-reader';
-
-const SCENARIOS = [
-  { value: FakeAiScenario.ALL_OK, label: 'All PPE present' },
-  { value: FakeAiScenario.MISSING_HELMET, label: 'Missing helmet' },
-  { value: FakeAiScenario.MISSING_VEST, label: 'Missing vest' },
-  { value: FakeAiScenario.MISSING_UNIFORM, label: 'Missing uniform' },
-  { value: FakeAiScenario.NONE, label: 'No PPE' },
-  { value: FakeAiScenario.AI_ERROR, label: 'AI error (fail-closed)' },
-];
 
 const PPE_LABELS: Record<string, string> = {
   HELMET: 'Helmet',
@@ -202,8 +194,6 @@ export function AccessKioskPage() {
   const [method, setMethod] = useState<'EMPLOYEE_CODE' | 'QR' | 'RFID'>('EMPLOYEE_CODE');
   const [identifier, setIdentifier] = useState('EMP-1001');
   const [direction, setDirection] = useState<'ENTRY' | 'EXIT'>('ENTRY');
-  const [detectMode, setDetectMode] = useState<'camera' | 'simulate'>('camera');
-  const [scenario, setScenario] = useState<string>(FakeAiScenario.MISSING_HELMET);
   const [frame, setFrame] = useState<File | null>(null);
   const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
   const [cameraOn, setCameraOn] = useState(false);
@@ -238,12 +228,12 @@ export function AccessKioskPage() {
   const stableCountRef = useRef(0);
   const capturedForPresenceRef = useRef(false);
   const awaitingRetakeRef = useRef(false);
+  const requireExitRef = useRef(false);
+  const autoRescanTimerRef = useRef<number | null>(null);
   const lastDetectAtRef = useRef(0);
   const smoothedBoxRef = useRef<PersonBox | null>(null);
   const identifiedRef = useRef<IdentifyResponse | null>(null);
   const autoInspectRef = useRef(true);
-  const detectModeRef = useRef(detectMode);
-  const scenarioRef = useRef(scenario);
   const accessTokenRef = useRef(accessToken);
   const snapshotUrlRef = useRef(snapshotUrl);
   const busyRef = useRef(busy);
@@ -255,12 +245,6 @@ export function AccessKioskPage() {
   useEffect(() => {
     autoInspectRef.current = autoInspect;
   }, [autoInspect]);
-  useEffect(() => {
-    detectModeRef.current = detectMode;
-  }, [detectMode]);
-  useEffect(() => {
-    scenarioRef.current = scenario;
-  }, [scenario]);
   useEffect(() => {
     accessTokenRef.current = accessToken;
   }, [accessToken]);
@@ -275,13 +259,13 @@ export function AccessKioskPage() {
   }, [result]);
 
   useEffect(() => {
-    if (resultModal === 'closed') return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setResultModal('closed');
+    return () => {
+      if (autoRescanTimerRef.current != null) {
+        window.clearTimeout(autoRescanTimerRef.current);
+        autoRescanTimerRef.current = null;
+      }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [resultModal]);
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -370,6 +354,13 @@ export function AccessKioskPage() {
     return file;
   }, []);
 
+  const clearAutoRescanTimer = useCallback(() => {
+    if (autoRescanTimerRef.current != null) {
+      window.clearTimeout(autoRescanTimerRef.current);
+      autoRescanTimerRef.current = null;
+    }
+  }, []);
+
   const armCapture = useCallback(() => {
     awaitingRetakeRef.current = false;
     capturedForPresenceRef.current = false;
@@ -381,11 +372,84 @@ export function AccessKioskPage() {
     setTrackStatus((prev) => (prev === 'idle' ? 'idle' : 'tracking'));
   }, []);
 
+  const prepareNextScan = useCallback(
+    async (opts?: { immediate?: boolean; retries?: number }) => {
+      const token = accessTokenRef.current;
+      if (!token) return;
+
+      clearAutoRescanTimer();
+      setResultModal('closed');
+      setError(null);
+      setResult(null);
+      if (snapshotUrlRef.current) URL.revokeObjectURL(snapshotUrlRef.current);
+      setSnapshotUrl(null);
+      setFrame(null);
+
+      if (busyRef.current && !opts?.immediate) return;
+      busyRef.current = true;
+      setBusy(true);
+
+      try {
+        const data = await postJson<IdentifyResponse>('/api/v1/access/identify', token, {
+          method,
+          identifier,
+          direction,
+          accessPointCode: 'GATE-1',
+        });
+        setIdentified(data);
+        identifiedRef.current = data;
+        requireExitRef.current = true;
+        armCapture();
+        setTrackStatus('searching');
+        if (!cameraOn) {
+          // Camera start is handled by caller / existing stream.
+        } else if (!loopActiveRef.current) {
+          // Loop restart happens via startTrackingLoop when camera is already on —
+          // tracking loop should still be running after inspect.
+        } else {
+          setTrackStatus('searching');
+        }
+      } catch (err) {
+        const message = err instanceof ApiError ? err.message : 'Could not start next scan';
+        const isCooldown =
+          message.toLowerCase().includes('cooldown') || message.toLowerCase().includes('duplicate');
+        const retriesLeft = opts?.retries ?? 2;
+        if (isCooldown && retriesLeft > 0) {
+          setError(`Waiting for cooldown… next scan in a few seconds.`);
+          autoRescanTimerRef.current = window.setTimeout(() => {
+            void prepareNextScan({ immediate: true, retries: retriesLeft - 1 });
+          }, COOLDOWN_RETRY_MS);
+        } else {
+          setError(
+            isCooldown
+              ? `${message} Tip: Admin → Settings → lower Access cooldown (e.g. 0–5s).`
+              : message,
+          );
+          // Keep unlocked UI so operator can press Retake manually.
+          requireExitRef.current = true;
+          armCapture();
+        }
+      } finally {
+        busyRef.current = false;
+        setBusy(false);
+      }
+    },
+    [armCapture, cameraOn, clearAutoRescanTimer, direction, identifier, method],
+  );
+
+  const scheduleAutoRescan = useCallback(() => {
+    clearAutoRescanTimer();
+    autoRescanTimerRef.current = window.setTimeout(() => {
+      void prepareNextScan({ immediate: true });
+    }, AUTO_RESULT_DISPLAY_MS);
+  }, [clearAutoRescanTimer, prepareNextScan]);
+
   const runInspectWithFile = useCallback(async (file: File | null) => {
     const token = accessTokenRef.current;
     const id = identifiedRef.current;
     if (!token || !id || busyRef.current || awaitingRetakeRef.current) return;
     // Open the result window immediately so the operator always sees the outcome.
+    clearAutoRescanTimer();
     setResultModal('checking');
     setBusy(true);
     setError(null);
@@ -394,23 +458,43 @@ export function AccessKioskPage() {
       const data = await postInspect(
         token,
         id.attemptId,
-        detectModeRef.current === 'simulate' ? scenarioRef.current : undefined,
+        undefined,
         file,
       );
       setResult(data);
-      // Attempt is finished — block further auto-inspect until Retake (new identify).
+      // Attempt is finished — briefly show result, then auto-arm the next scan.
       awaitingRetakeRef.current = true;
       capturedForPresenceRef.current = true;
       setTrackStatus('awaiting_retake');
       setResultModal('ready');
+      scheduleAutoRescan();
     } catch (err) {
       setResultModal('closed');
       setError(err instanceof ApiError ? err.message : 'Inspect failed');
+      // Unlock so the same attempt can retry after a failed inspect network blip.
+      awaitingRetakeRef.current = false;
+      capturedForPresenceRef.current = false;
+      armCapture();
     } finally {
       busyRef.current = false;
       setBusy(false);
     }
-  }, []);
+  }, [armCapture, clearAutoRescanTimer, scheduleAutoRescan]);
+
+  useEffect(() => {
+    if (resultModal === 'closed') return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      if (resultModal === 'ready') {
+        clearAutoRescanTimer();
+        void prepareNextScan({ immediate: true });
+      } else {
+        setResultModal('closed');
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [resultModal, clearAutoRescanTimer, prepareNextScan]);
 
   const stopTrackingLoop = useCallback(() => {
     loopActiveRef.current = false;
@@ -474,12 +558,20 @@ export function AccessKioskPage() {
 
                 let frameLabel: string;
                 let tone: PersonFrameTone;
-                if (awaitingRetakeRef.current) {
+                if (requireExitRef.current) {
+                  if (!wellFramedNow) {
+                    requireExitRef.current = false;
+                  }
+                  frameLabel = wellFramedNow
+                    ? 'Step aside for next scan'
+                    : 'Ready — step into view';
+                  tone = wellFramedNow ? 'warn' : 'ok';
+                } else if (awaitingRetakeRef.current) {
                   const decision = resultRef.current?.decision;
                   frameLabel =
                     decision === 'GRANTED'
                       ? 'PPE check complete'
-                      : 'PPE check complete — Retake';
+                      : 'PPE check complete — next scan soon';
                   tone = decision === 'GRANTED' ? 'ok' : 'warn';
                 } else if (!wellFramedNow) {
                   frameLabel = `Step closer · ${Math.round(smoothed.score * 100)}%`;
@@ -499,7 +591,11 @@ export function AccessKioskPage() {
                 // Webcam video is CSS-mirrored; flip overlay boxes to match.
                 drawPersonFrame(ctx, box, true, overlay.width, frameLabel, tone);
 
-                if (awaitingRetakeRef.current) {
+                if (requireExitRef.current) {
+                  stableCountRef.current = 0;
+                  setLockProgress(0);
+                  setTrackStatus('searching');
+                } else if (awaitingRetakeRef.current) {
                   setLockProgress(1);
                   setTrackStatus('awaiting_retake');
                 } else if (wellFramedNow && !capturedForPresenceRef.current) {
@@ -723,6 +819,8 @@ export function AccessKioskPage() {
     event.preventDefault();
     if (!accessToken) return;
     try {
+      clearAutoRescanTimer();
+      requireExitRef.current = false;
       setBusy(true);
       setError(null);
       setResult(null);
@@ -740,36 +838,16 @@ export function AccessKioskPage() {
 
   /** New attempt + clear capture lock so PPE can be re-checked after DENIED/GRANTED. */
   async function onRetake() {
-    if (!accessToken) return;
-    try {
-      setBusy(true);
-      setError(null);
-      setResult(null);
-      setResultModal('closed');
-      if (snapshotUrlRef.current) URL.revokeObjectURL(snapshotUrlRef.current);
-      setSnapshotUrl(null);
-      setFrame(null);
-      await identifyEmployee();
-      armCapture();
-      if (!cameraOn) await startCamera();
-      else if (!loopActiveRef.current) startTrackingLoop();
-      else setTrackStatus('tracking');
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Retake failed — try Identify again';
-      setError(
-        message.includes('cooldown') || message.includes('Duplicate')
-          ? `${message} Tip: Admin → Settings → lower Access cooldown (e.g. 5s).`
-          : message,
-      );
-    } finally {
-      setBusy(false);
-    }
+    clearAutoRescanTimer();
+    await prepareNextScan({ immediate: true });
+    if (!cameraOn) await startCamera();
+    else if (!loopActiveRef.current) startTrackingLoop();
   }
 
   async function onInspect() {
     if (!accessToken || !identified) return;
     if (awaitingRetakeRef.current) {
-      setError('This attempt already finished — click Retake for a new PPE check.');
+      setError('This attempt already finished — waiting for auto refresh, or press Retake.');
       return;
     }
     const captured = await captureFrame();
@@ -812,9 +890,9 @@ export function AccessKioskPage() {
       kicker: result?.decision === 'GRANTED' ? 'Granted' : 'Check complete',
       title:
         result?.decision === 'GRANTED'
-          ? 'All required PPE detected — see result window'
-          : 'Missing PPE — see result window, then Retake',
-      badge: 'PPE check complete',
+          ? 'Access granted — refreshing for next scan…'
+          : 'Check complete — refreshing for next scan…',
+      badge: 'Auto-refreshing…',
     },
   };
   const hud = trackCopy[trackStatus];
@@ -852,10 +930,7 @@ export function AccessKioskPage() {
           <p className={styles.meta}>
             Adapter: <strong>{aiStatus.adapter}</strong>
             {live && aiStatus.baseUrl ? ` → ${aiStatus.baseUrl}` : ''}
-            {` · timeout ${aiStatus.timeoutMs}ms`}
-            {detectMode === 'camera'
-              ? ' · Camera mode uses real frame / YOLO when loaded'
-              : ' · Simulate mode: scenario dropdown overrides detections'}
+            {` · timeout ${aiStatus.timeoutMs}ms · live camera / YOLO when loaded`}
           </p>
         )}
       </div>
@@ -1038,32 +1113,9 @@ export function AccessKioskPage() {
               </div>
             )}
             <div className={styles.extrasGrid}>
-              <label>
-                Detection mode
-                <select
-                  value={detectMode}
-                  onChange={(e) => setDetectMode(e.target.value as 'camera' | 'simulate')}
-                >
-                  <option value="camera">Camera</option>
-                  <option value="simulate">Simulate</option>
-                </select>
-              </label>
-              {detectMode === 'simulate' ? (
-                <label>
-                  Simulated scenario
-                  <select value={scenario} onChange={(e) => setScenario(e.target.value)}>
-                    {SCENARIOS.map((s) => (
-                      <option key={s.value} value={s.value}>
-                        {s.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : (
-                <p className={styles.hint}>
-                  Fill the outline, then hold still when the frame turns green.
-                </p>
-              )}
+              <p className={styles.hint}>
+                Fill the outline, then hold still when the frame turns green.
+              </p>
               <label>
                 Upload photo
                 <input
@@ -1095,7 +1147,7 @@ export function AccessKioskPage() {
         <section className={styles.cameraColumn}>
           <div className={styles.stageHead}>
             <h3>PPE camera</h3>
-            <p>The detection frame follows you. Results open in a popup when the check finishes.</p>
+            <p>The detection frame follows you. Results pop up, then the kiosk auto-refreshes for the next person.</p>
           </div>
           <div
             className={styles.stage}
@@ -1231,16 +1283,30 @@ export function AccessKioskPage() {
             aria-modal="true"
             aria-labelledby="ppe-result-title"
           >
-            <div className={styles.resultOverlayScrim} onClick={() => setResultModal('closed')} />
+          <div className={styles.resultOverlayScrim} onClick={() => {
+            if (resultModal === 'ready') {
+              clearAutoRescanTimer();
+              void prepareNextScan({ immediate: true });
+            } else {
+              setResultModal('closed');
+            }
+          }} />
             <div className={styles.resultWindow} data-decision={result?.decision ?? 'PENDING'}>
-              <button
-                type="button"
-                className={styles.resultClose}
-                onClick={() => setResultModal('closed')}
-                aria-label="Close results"
-              >
-                Close
-              </button>
+            <button
+              type="button"
+              className={styles.resultClose}
+              onClick={() => {
+                if (resultModal === 'ready') {
+                  clearAutoRescanTimer();
+                  void prepareNextScan({ immediate: true });
+                } else {
+                  setResultModal('closed');
+                }
+              }}
+              aria-label="Close results"
+            >
+              Close
+            </button>
 
               <div className={styles.resultWindowGrid}>
                 <div className={styles.resultPhoto}>
@@ -1320,8 +1386,14 @@ export function AccessKioskPage() {
               </section>
 
               <div className={styles.resultWindowActions}>
-                <button type="button" onClick={() => setResultModal('closed')}>
-                  Back to camera
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearAutoRescanTimer();
+                    void prepareNextScan({ immediate: true });
+                  }}
+                >
+                  Scan again now
                 </button>
                 {result?.decision === 'DENIED' && (
                   <button
@@ -1330,7 +1402,7 @@ export function AccessKioskPage() {
                     disabled={busy}
                     onClick={() => void onRetake()}
                   >
-                    Retake after fixing PPE
+                    Fix PPE & rescan
                   </button>
                 )}
                 {result?.decision === 'GRANTED' && (
