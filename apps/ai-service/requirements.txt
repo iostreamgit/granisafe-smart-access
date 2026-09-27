@@ -1,0 +1,10 @@
+# Prefer Python 3.11–3.12. On 3.14 set:
+#   set PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
+# before pip install (Windows).
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+python-multipart>=0.0.20
+pydantic>=2.11.0
+pydantic-settings>=2.8.0
+httpx>=0.28.0
+pytest>=8.3.0

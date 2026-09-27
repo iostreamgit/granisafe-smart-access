@@ -1,0 +1,182 @@
+.page h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.8rem;
+}
+
+.page > .header p,
+.page > p {
+  margin: 0.45rem 0 0;
+  color: var(--muted);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-end;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.tab,
+.tabActive {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 8px;
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+}
+
+.tabActive {
+  color: var(--ink);
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+
+.error {
+  color: var(--danger);
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 0.8fr;
+  gap: 0.6rem;
+  margin: 0.8rem 0 1rem;
+}
+
+.filters input,
+.filters select,
+.form input,
+.form select {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+}
+
+.form {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 1.1rem;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.form h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.55rem;
+  margin-bottom: 0.75rem;
+}
+
+.form button,
+.actions button,
+.table button {
+  border: 1px solid var(--line);
+  background: var(--surface-muted);
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 0.4rem 0.65rem;
+  cursor: pointer;
+}
+
+.form > button {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: 0;
+  font-weight: 700;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 0.7rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.table th {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.badgeOk,
+.badgeMuted {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.78rem;
+}
+
+.badgeOk {
+  background: rgba(61, 155, 106, 0.18);
+  color: var(--ok);
+}
+
+.badgeMuted {
+  background: var(--surface-muted);
+  color: var(--muted);
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  z-index: 40;
+}
+
+.modal {
+  width: min(420px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 1.1rem;
+  text-align: center;
+}
+
+.modal img {
+  width: 260px;
+  height: 260px;
+  background: white;
+  border-radius: 8px;
+}
+
+.payload {
+  word-break: break-all;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+@media (max-width: 800px) {
+  .filters {
+    grid-template-columns: 1fr;
+  }
+}

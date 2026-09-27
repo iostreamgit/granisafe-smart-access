@@ -1,0 +1,34 @@
+{
+  "name": "granisafe-smart-access",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AI-Assisted Smart Access Control and Attendance Platform for PPE Compliance",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "postinstall": "pnpm --filter @granisafe/shared build",
+    "dev": "pnpm -r --parallel --filter @granisafe/web --filter @granisafe/api run dev",
+    "dev:web": "pnpm --filter @granisafe/web dev",
+    "dev:api": "pnpm --filter @granisafe/api dev",
+    "dev:ai": "pnpm --filter @granisafe/ai-service start",
+    "build": "pnpm -r --filter @granisafe/shared --filter @granisafe/api --filter @granisafe/web run build",
+    "lint": "pnpm -r --filter @granisafe/shared --filter @granisafe/api --filter @granisafe/web run lint",
+    "typecheck": "pnpm -r --filter @granisafe/shared --filter @granisafe/api --filter @granisafe/web run typecheck",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md,yml,yaml}\"",
+    "infra:up": "docker compose -f deploy/compose/docker-compose.yml up -d",
+    "infra:down": "docker compose -f deploy/compose/docker-compose.yml down",
+    "db:setup": "pnpm --filter @granisafe/api db:setup",
+    "db:seed": "pnpm --filter @granisafe/api prisma:seed",
+    "test": "pnpm --filter @granisafe/api test && pnpm --filter @granisafe/web test:unit",
+    "test:integration": "pnpm --filter @granisafe/api test:integration",
+    "test:e2e": "pnpm --filter @granisafe/web test:e2e",
+    "test:perf": "node ./scripts/run-k6-smoke.mjs"
+  },
+  "devDependencies": {
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.2"
+  }
+}

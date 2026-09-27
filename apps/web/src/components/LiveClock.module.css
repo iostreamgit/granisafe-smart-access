@@ -1,0 +1,43 @@
+.clock {
+  display: grid;
+  gap: 0.15rem;
+  justify-items: start;
+  font-variant-numeric: tabular-nums;
+}
+
+.time {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.55rem;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+.date {
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  opacity: 0.82;
+}
+
+.dark {
+  color: #f3faf7;
+  justify-items: center;
+  text-align: center;
+}
+
+.dark .time {
+  font-size: clamp(1.8rem, 4vw, 2.4rem);
+}
+
+.dark .date {
+  color: rgba(232, 242, 237, 0.82);
+}
+
+.light {
+  color: var(--ink-strong);
+}
+
+.light .date {
+  color: var(--muted);
+}

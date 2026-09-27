@@ -1,0 +1,76 @@
+# Production-oriented overlays (app containers). Infra still from base compose.
+# Usage (when images are ready):
+#   docker compose -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.prod.yml up -d --build
+
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.api
+    container_name: gsa-api
+    restart: unless-stopped
+    environment:
+      API_PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-granisafe}:${POSTGRES_PASSWORD:-granisafe}@postgres:5432/${POSTGRES_DB:-granisafe_smart_access}
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+      S3_BUCKET: ${S3_BUCKET:-granisafe-evidence}
+      AI_BASE_URL: http://ai:8000
+      AI_API_KEY: ${AI_API_KEY:-dev-ai-key-change-me}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-change-me-access}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-refresh}
+    ports:
+      - '${API_PORT:-3000}:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ai:
+        condition: service_started
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3000/health']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.web
+      args:
+        VITE_API_BASE_URL: ''
+    container_name: gsa-web
+    restart: unless-stopped
+    ports:
+      - '${WEB_PORT:-8080}:80'
+    depends_on:
+      api:
+        condition: service_healthy
+
+  ai:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.ai
+    container_name: gsa-ai
+    restart: unless-stopped
+    environment:
+      AI_API_KEY: ${AI_API_KEY:-dev-ai-key-change-me}
+      MODEL_VERSION: ${MODEL_VERSION:-phase1-stub}
+      DEVICE: ${DEVICE:-cpu}
+    ports:
+      - '${AI_PORT:-8000}:8000'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'python',
+          '-c',
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10

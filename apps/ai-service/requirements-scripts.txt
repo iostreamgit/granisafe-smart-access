@@ -1,0 +1,2 @@
+# Optional deps for offline training/export scripts (not required for AI service runtime)
+psycopg2-binary>=2.9.0

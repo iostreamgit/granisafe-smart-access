@@ -1,0 +1,23 @@
+.page h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.8rem;
+}
+
+.page p {
+  margin: 0.65rem 0 1.1rem;
+  color: var(--muted);
+  max-width: 40rem;
+  line-height: 1.5;
+}
+
+.badge {
+  display: inline-block;
+  border: 1px solid var(--line);
+  color: var(--brand);
+  background: var(--brand-soft);
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}

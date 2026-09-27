@@ -1,0 +1,73 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Builds
+dist/
+build/
+coverage/
+*.tsbuildinfo
+apps/api/tsconfig.build.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# IDE / OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# AI model weights (download separately)
+*.pt
+*.onnx
+!apps/ai-service/models/.gitkeep
+
+# Training artifacts / exported evidence crops (local only)
+apps/ai-service/runs/
+apps/ai-service/datasets/vest-classifier/raw/
+apps/ai-service/datasets/vest-classifier/train/**/*.jpg
+apps/ai-service/datasets/vest-classifier/train/**/*.jpeg
+apps/ai-service/datasets/vest-classifier/train/**/*.png
+apps/ai-service/datasets/vest-classifier/val/**/*.jpg
+apps/ai-service/datasets/vest-classifier/val/**/*.jpeg
+apps/ai-service/datasets/vest-classifier/val/**/*.png
+apps/ai-service/datasets/vest-classifier/mistakes/**/*.jpg
+apps/ai-service/datasets/vest-classifier/mistakes/**/*.jpeg
+apps/ai-service/datasets/vest-classifier/mistakes/**/*.png
+
+# Uploads / local storage
+storage/
+uploads/
+.tmp/
+apps/api/storage/
+
+# Docker volumes (if bind-mounted)
+data/postgres/
+data/redis/
+data/minio/
+
+# Misc
+*.swp
+.turbo/
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/blob-report/

@@ -1,0 +1,12 @@
+node_modules
+dist
+build
+coverage
+pnpm-lock.yaml
+docs/architecture
+data
+.venv
+venv
+**/test-results
+**/playwright-report
+apps/ai-service/**/*.pt

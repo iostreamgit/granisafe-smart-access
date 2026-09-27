@@ -1,0 +1,10 @@
+{
+  "extends": "../../packages/tsconfig/react.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src", "vite.config.ts"],
+  "exclude": ["src/**/*.spec.ts", "e2e", "playwright.config.ts"]
+}

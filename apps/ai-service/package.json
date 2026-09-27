@@ -1,0 +1,10 @@
+{
+  "name": "@granisafe/ai-service",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload",
+    "start:prod": "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000",
+    "test": "python -m pytest tests -q"
+  }
+}

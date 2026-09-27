@@ -1,0 +1,370 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Company {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  users              User[]
+  auditLogs          AuditLog[]
+  departments        Department[]
+  employees          Employee[]
+  attendanceRecords  AttendanceRecord[]
+  ppePolicies        PpePolicy[]
+  accessAttempts     AccessAttempt[]
+  cameraStatuses      CameraStatus[]
+  notifications      Notification[]
+  reportJobs         ReportJob[]
+  systemSettings     SystemSetting[]
+
+  @@map("companies")
+}
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  companyId    String    @map("company_id") @db.Uuid
+  email        String
+  passwordHash String    @map("password_hash")
+  fullName     String    @map("full_name")
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(3)
+
+  company       Company        @relation(fields: [companyId], references: [id])
+  roles         UserRole[]
+  refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]     @relation("AuditActor")
+  employee      Employee?
+  notifications Notification[]
+  reportJobs    ReportJob[]    @relation("ReportRequester")
+
+  @@unique([companyId, email])
+  @@index([companyId, isActive])
+  @@map("users")
+}
+
+model Role {
+  id   String @id @default(uuid()) @db.Uuid
+  code String @unique
+  name String
+
+  users       UserRole[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String @id @default(uuid()) @db.Uuid
+  code        String @unique
+  description String
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model UserRole {
+  userId String @map("user_id") @db.Uuid
+  roleId String @map("role_id") @db.Uuid
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  roleId       String @map("role_id") @db.Uuid
+  permissionId String @map("permission_id") @db.Uuid
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @map("token_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  companyId   String?  @map("company_id") @db.Uuid
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String?  @map("entity_id")
+  metadata    Json?
+  ipAddress   String?  @map("ip_address")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  company Company? @relation(fields: [companyId], references: [id])
+  actor   User?    @relation("AuditActor", fields: [actorUserId], references: [id])
+
+  @@index([actorUserId, createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
+model Department {
+  id        String    @id @default(uuid()) @db.Uuid
+  companyId String    @map("company_id") @db.Uuid
+  name      String
+  code      String
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+
+  company   Company    @relation(fields: [companyId], references: [id])
+  employees Employee[]
+
+  @@unique([companyId, code])
+  @@index([companyId, deletedAt])
+  @@map("departments")
+}
+
+model Employee {
+  id               String    @id @default(uuid()) @db.Uuid
+  companyId        String    @map("company_id") @db.Uuid
+  departmentId     String?   @map("department_id") @db.Uuid
+  userId           String?   @unique @map("user_id") @db.Uuid
+  employeeCode     String    @map("employee_code")
+  firstName        String    @map("first_name")
+  lastName         String    @map("last_name")
+  status           String    @default("ACTIVE")
+  shiftStart       String?   @map("shift_start")
+  lateGraceMinutes Int       @default(10) @map("late_grace_minutes")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz(3)
+
+  company           Company              @relation(fields: [companyId], references: [id])
+  department        Department?          @relation(fields: [departmentId], references: [id])
+  user              User?                @relation(fields: [userId], references: [id])
+  identifiers       EmployeeIdentifier[]
+  attendanceRecords AttendanceRecord[]
+  accessAttempts    AccessAttempt[]
+
+  @@unique([companyId, employeeCode])
+  @@index([companyId, status])
+  @@index([departmentId])
+  @@map("employees")
+}
+
+model EmployeeIdentifier {
+  id          String    @id @default(uuid()) @db.Uuid
+  employeeId  String    @map("employee_id") @db.Uuid
+  type        String
+  /// Demo/internship: stored for QR re-display. Prefer encrypt-at-rest in production.
+  value       String
+  valueHash   String    @map("value_hash")
+  displayHint String    @map("display_hint")
+  isActive    Boolean   @default(true) @map("is_active")
+  rotatedAt   DateTime? @map("rotated_at") @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, type, isActive])
+  @@index([type, valueHash])
+  @@unique([type, valueHash])
+  @@map("employee_identifiers")
+}
+
+model AttendanceRecord {
+  id              String    @id @default(uuid()) @db.Uuid
+  companyId       String    @map("company_id") @db.Uuid
+  employeeId      String    @map("employee_id") @db.Uuid
+  accessAttemptId String?   @unique @map("access_attempt_id") @db.Uuid
+  punchType       String    @map("punch_type")
+  punchedAt       DateTime  @map("punched_at") @db.Timestamptz(3)
+  isLate          Boolean   @default(false) @map("is_late")
+  source          String    @default("MANUAL")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  company       Company       @relation(fields: [companyId], references: [id])
+  employee      Employee      @relation(fields: [employeeId], references: [id])
+  accessAttempt AccessAttempt? @relation(fields: [accessAttemptId], references: [id])
+
+  @@index([employeeId, punchedAt])
+  @@index([companyId, punchedAt])
+  @@index([punchedAt])
+  @@map("attendance_records")
+}
+
+model PpePolicy {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  name      String
+  isDefault Boolean  @default(false) @map("is_default")
+  version   Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  company  Company         @relation(fields: [companyId], references: [id])
+  items    PpePolicyItem[]
+  attempts AccessAttempt[]
+
+  @@index([companyId, isDefault])
+  @@map("ppe_policies")
+}
+
+model PpePolicyItem {
+  id            String @id @default(uuid()) @db.Uuid
+  policyId      String @map("policy_id") @db.Uuid
+  ppeClass      String @map("ppe_class")
+  required      Boolean @default(true)
+  minConfidence Decimal @default(0.70) @map("min_confidence") @db.Decimal(4, 3)
+
+  policy PpePolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+
+  @@unique([policyId, ppeClass])
+  @@map("ppe_policy_items")
+}
+
+model AccessAttempt {
+  id                String    @id @default(uuid()) @db.Uuid
+  companyId         String    @map("company_id") @db.Uuid
+  employeeId        String    @map("employee_id") @db.Uuid
+  direction         String
+  status            String
+  policyId          String?   @map("policy_id") @db.Uuid
+  policyVersion     Int?      @map("policy_version")
+  accessPointCode   String    @map("access_point_code")
+  evidenceObjectKey String?   @map("evidence_object_key")
+  correlationId     String    @map("correlation_id")
+  idempotencyKey    String?   @map("idempotency_key")
+  startedAt         DateTime  @default(now()) @map("started_at") @db.Timestamptz(3)
+  finishedAt        DateTime? @map("finished_at") @db.Timestamptz(3)
+
+  company           Company               @relation(fields: [companyId], references: [id])
+  employee          Employee              @relation(fields: [employeeId], references: [id])
+  policy            PpePolicy?            @relation(fields: [policyId], references: [id])
+  decision          AccessDecisionRecord?
+  detections        AccessDetectionItem[]
+  attendanceRecord  AttendanceRecord?
+
+  @@index([employeeId, startedAt(sort: Desc)])
+  @@index([companyId, status, startedAt(sort: Desc)])
+  @@index([startedAt])
+  @@unique([companyId, idempotencyKey])
+  @@map("access_attempts")
+}
+
+model AccessDecisionRecord {
+  id              String   @id @default(uuid()) @db.Uuid
+  accessAttemptId String   @unique @map("access_attempt_id") @db.Uuid
+  decision        String
+  reasons         Json
+  gateSimulated   Boolean  @default(false) @map("gate_simulated")
+  gateOpenMs      Int      @default(0) @map("gate_open_ms")
+  decidedAt       DateTime @default(now()) @map("decided_at") @db.Timestamptz(3)
+
+  accessAttempt AccessAttempt @relation(fields: [accessAttemptId], references: [id], onDelete: Cascade)
+
+  @@map("access_decisions")
+}
+
+model AccessDetectionItem {
+  id              String  @id @default(uuid()) @db.Uuid
+  accessAttemptId String  @map("access_attempt_id") @db.Uuid
+  ppeClass        String  @map("ppe_class")
+  detected        Boolean
+  confidence      Decimal @db.Decimal(5, 4)
+  bbox            Json?
+
+  accessAttempt AccessAttempt @relation(fields: [accessAttemptId], references: [id], onDelete: Cascade)
+
+  @@index([accessAttemptId])
+  @@map("access_detection_items")
+}
+
+model CameraStatus {
+  id              String   @id @default(uuid()) @db.Uuid
+  companyId       String   @map("company_id") @db.Uuid
+  accessPointCode String   @map("access_point_code")
+  status          String   @default("ONLINE")
+  lastHeartbeatAt DateTime @map("last_heartbeat_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, accessPointCode])
+  @@index([companyId, lastHeartbeatAt])
+  @@map("camera_status")
+}
+
+model Notification {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  type      String
+  title     String
+  body      String
+  payload   Json?
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  company Company @relation(fields: [companyId], references: [id])
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt(sort: Desc)])
+  @@index([companyId, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+model ReportJob {
+  id                String    @id @default(uuid()) @db.Uuid
+  companyId         String    @map("company_id") @db.Uuid
+  requestedByUserId String    @map("requested_by_user_id") @db.Uuid
+  type              String
+  format            String
+  status            String    @default("QUEUED")
+  params            Json
+  storageKey        String?   @map("storage_key")
+  error             String?
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  completedAt       DateTime? @map("completed_at") @db.Timestamptz(3)
+
+  company       Company @relation(fields: [companyId], references: [id])
+  requestedBy   User    @relation("ReportRequester", fields: [requestedByUserId], references: [id])
+
+  @@index([companyId, createdAt(sort: Desc)])
+  @@index([requestedByUserId, createdAt(sort: Desc)])
+  @@map("report_jobs")
+}
+
+model SystemSetting {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  key       String
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, key])
+  @@index([companyId])
+  @@map("system_settings")
+}
