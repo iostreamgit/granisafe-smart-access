@@ -622,7 +622,6 @@ export function AccessKioskPage() {
     setCameraOn(false);
     setTrackStatus('idle');
     setPersonScore(null);
-    setWellFramed(false);
     setLockProgress(0);
   }
 

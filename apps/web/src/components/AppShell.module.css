@@ -30,16 +30,18 @@
 .logoPlate {
   display: grid;
   place-items: center;
-  padding: 0.55rem 0.65rem;
-  border-radius: 14px;
+  width: 4.25rem;
+  height: 4.25rem;
+  padding: 0.45rem;
+  border-radius: 16px;
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
 }
 
 .logo {
   width: 100%;
-  max-width: 148px;
-  height: auto;
+  height: 100%;
+  object-fit: contain;
   display: block;
 }
 

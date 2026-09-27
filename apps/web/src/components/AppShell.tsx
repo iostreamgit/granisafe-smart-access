@@ -75,10 +75,11 @@ export function AppShell() {
           <div className={styles.logoPlate}>
             <img
               className={styles.logo}
-              src="/brand/gss-logo.png"
+              src="/brand/granisafe-mark.png"
               alt="Grani Safe Solution"
-              width={160}
-              height={80}
+              width={128}
+              height={128}
+              decoding="async"
             />
           </div>
           <p className={styles.brand}>{APP_NAME}</p>
